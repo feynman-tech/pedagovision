@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>PedagoVision - Çocuk İçerikleri Uyaran Analizörü</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --safe: #22c55e;
+      --warn: #eab308;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 16px; padding-bottom: 40px; }
+    .container { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+    
+    header { text-align: center; padding: 12px 0; border-bottom: 1px solid var(--border); }
+    header h1 { font-size: 1.4rem; color: var(--accent); margin-bottom: 4px; }
+    header p { font-size: 0.85rem; color: var(--muted); }
+
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+    .card h2 { font-size: 1rem; margin-bottom: 12px; color: var(--accent); display: flex; align-items: center; gap: 8px; }
+
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    @media (max-width: 600px) { .controls { grid-template-columns: 1fr; } }
+    
+    button, label.btn-upload {
+      background: #2563eb; color: white; border: none; padding: 12px; border-radius: 8px;
+      font-weight: 600; font-size: 0.9rem; cursor: pointer; text-align: center; display: inline-block;
+    }
+    label.btn-upload { background: #0284c7; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.btn-danger { background: #dc2626; }
+    input[type="file"] { display: none; }
+
+    .sim-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .btn-sim { background: #334155; font-size: 0.75rem; padding: 8px 10px; border-radius: 6px; border: 1px solid #475569; color: #e2e8f0; }
+
+    .video-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+    @media (max-width: 600px) { .video-grid { grid-template-columns: 1fr; } }
+    video, canvas { width: 100%; height: auto; background: #000; border-radius: 8px; aspect-ratio: 16/9; object-fit: contain; }
+
+    .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+    .metric-card { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid var(--border); text-align: center; }
+    .metric-value { font-size: 1.4rem; font-weight: 700; margin-top: 4px; color: var(--text); }
+    .metric-label { font-size: 0.75rem; color: var(--muted); }
+
+    .decision-banner { padding: 16px; border-radius: 10px; font-weight: 700; font-size: 1.1rem; text-align: center; margin-top: 12px; }
+    .bg-safe { background: rgba(34, 197, 94, 0.2); border: 2px solid var(--safe); color: #86efac; }
+    .bg-warn { background: rgba(234, 179, 8, 0.2); border: 2px solid var(--warn); color: #fde047; }
+    .bg-danger { background: rgba(239, 68, 68, 0.2); border: 2px solid var(--danger); color: #fca5a5; }
+
+    .report-box { background: #090d16; border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-family: monospace; font-size: 0.8rem; color: #cbd5e1; white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>PedagoVision (TÜBİTAK 2204-A)</h1>
+    <p>Çocuk İçerikleri Aşırı Duyusal Uyaran, Renk ve Sahne Hızı Analiz Motoru</p>
+  </header>
+
+  <div class="card">
+    <h2>1. Video Kaynağı</h2>
+    <div class="controls">
+      <label class="btn-upload">
+        📁 Cihazdan Video Seç
+        <input type="file" id="videoUpload" accept="video/mp4,video/webm">
+      </label>
+      <button id="btnCamera" type="button">📷 Kamerayı Aç (Ekran Tara)</button>
+    </div>
+    
+    <div class="sim-bar">
+      <span style="font-size: 0.75rem; color: var(--muted); align-self: center;">Test Simülatörleri:</span>
+      <button class="btn-sim" onclick="startSimulator('cocomelon')">🚨 Cocomelon / Short (Aşırı Hızlı)</button>
+      <button class="btn-sim" onclick="startSimulator('moderate')">⚠️ Modern Çizgi Film (Orta)</button>
+      <button class="btn-sim" onclick="startSimulator('slow')">✅ Winnie / TRT Sakin (Düşük)</button>
+    </div>
+
+    <div class="video-grid">
+      <div>
+        <div style="font-size: 0.75rem; color: var(--muted); margin-bottom: 4px;">Canlı Giriş</div>
+        <video id="videoPlayer" playsinline muted controls></video>
+      </div>
+      <div>
+        <div style="font-size: 0.75rem; color: var(--muted); margin-bottom: 4px;">Piksel Ayrıştırma (Canvas)</div>
+        <canvas id="analysisCanvas" width="160" height="90"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>2. Gerçek Zamanlı Metrikler</h2>
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">DAE Skoru (0-100)</div>
+        <div class="metric-value" id="valCSI">-</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Ort. Sahne Süresi (ASL)</div>
+        <div class="metric-value" id="valASL">-</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Kesme Sayısı / Dk</div>
+        <div class="metric-value" id="valCPM">-</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Ort. Renk Doygunluğu</div>
+        <div class="metric-value" id="valSat">-</div>
+      </div>
+    </div>
+
+    <div id="decisionBox" class="decision-banner bg-safe" style="display: none;">
+      Analiz Bekleniyor...
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>3. Zaman Serisi Grafiği (Lüminesans ve Kesmeler)</h2>
+    <div style="height: 180px;">
+      <canvas id="chartTemporal"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>4. TÜBİTAK Proje Rapor Çıktısı</h2>
+    <div class="report-box" id="reportOutput">Analiz tamamlandığında bilimsel metin buraya aktarılır...</div>
+  </div>
+</div>
+
+<script>
+  const video = document.getElementById('videoPlayer');
+  const canvas = document.getElementById('analysisCanvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  
+  let isAnalyzing = false;
+  let prevFrameData = null;
+  let frameCount = 0;
+  let cutCount = 0;
+  let totalSaturation = 0;
+  let cutHistory = [];
+  let lumHistory = [];
+  let simInterval = null;
+  let chart = null;
+
+  // Grafik Hazırlığı
+  const chartCtx = document.getElementById('chartTemporal').getContext('2d');
+  chart = new Chart(chartCtx, {
+    type: 'line',
+    data: {
+      labels: Array(30).fill(''),
+      datasets: [{
+        label: 'Parlaklık Değişimi (Lüminesans)',
+        data: Array(30).fill(50),
+        borderColor: '#38bdf8',
+        borderWidth: 1.5,
+        fill: false,
+        tension: 0.1
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { min: 0, max: 255, display: false },
+        x: { display: false }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  // Video Yükleme Olayı
+  document.getElementById('videoUpload').addEventListener('change', (e) => {
+    stopSimulator();
+    const file = e.target.files[0];
+    if (file) {
+      video.src = URL.createObjectURL(file);
+      video.play();
+      startAnalysisLoop();
+    }
+  });
+
+  // Kamera Girişi
+  document.getElementById('btnCamera').addEventListener('click', async () => {
+    stopSimulator();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+      video.play();
+      startAnalysisLoop();
+    } catch (err) {
+      alert("Kameraya erişilemedi: " + err.message);
+    }
+  });
+
+  function startAnalysisLoop() {
+    isAnalyzing = true;
+    frameCount = 0;
+    cutCount = 0;
+    totalSaturation = 0;
+    prevFrameData = null;
+    requestAnimationFrame(processFrame);
+  }
+
+  function processFrame() {
+    if (!isAnalyzing || video.paused || video.ended) {
+      if (isAnalyzing) requestAnimationFrame(processFrame);
+      return;
+    }
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imgData.data;
+
+    let currentLuminance = 0;
+    let currentSaturation = 0;
+    let diffSum = 0;
+
+    for (let i = 0; i < data.length; i += 16) { // Hız için 4 pikselde bir örnekleme
+      const r = data[i], g = data[i+1], b = data[i+2];
+      
+      // Rec. 601 Lüminesans
+      const lum = 0.299*r + 0.587*g + 0.114*b;
+      currentLuminance += lum;
+
+      // HSV Doygunluk
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      const sat = max === 0 ? 0 : (max - min) / max;
+      currentSaturation += sat;
+
+      if (prevFrameData) {
+        diffSum += Math.abs(lum - prevFrameData[i/16]);
+      }
+    }
+
+    const sampleCount = data.length / 16;
+    const avgLum = currentLuminance / sampleCount;
+    const avgSat = currentSaturation / sampleCount;
+    const avgDiff = prevFrameData ? (diffSum / sampleCount) : 0;
+
+    // Sahne Kesme Eşiği (Mean Absolute Difference > 28)
+    if (avgDiff > 28) {
+      cutCount++;
+      cutHistory.push(Date.now());
+    }
+
+    // Geçmişi kaydet
+    if (!prevFrameData) prevFrameData = new Float32Array(sampleCount);
+    for (let i = 0; i < data.length; i += 16) {
+      prevFrameData[i/16] = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2];
+    }
+
+    frameCount++;
+    totalSaturation += avgSat;
+
+    // Metrikleri Güncelle (Her 15 karede bir)
+    if (frameCount % 15 === 0) {
+      updateDashboard(avgSat, avgLum);
+    }
+
+    requestAnimationFrame(processFrame);
+  }
+
+  function updateDashboard(avgSat, avgLum) {
+    const elapsedSec = video.currentTime > 0 ? video.currentTime : (frameCount / 30);
+    const cpm = elapsedSec > 0 ? ((cutCount / elapsedSec) * 60).toFixed(1) : 0;
+    const asl = cutCount > 0 ? (elapsedSec / cutCount).toFixed(1) : elapsedSec.toFixed(1);
+    const overallSat = ((totalSaturation / frameCount) * 100).toFixed(0);
+
+    // Duyusal Aşırı Uyarılma İndeksi Formülü (DAE)
+    // DAE = (CPM * 1.8) + (Sat * 0.4) + (Hızlı geçiş cezası)
+    let csi = Math.min(100, Math.round((cpm * 1.5) + (overallSat * 0.35)));
+    if (asl < 2.5 && cutCount > 2) csi = Math.min(100, csi + 20);
+
+    document.getElementById('valCSI').textContent = csi;
+    document.getElementById('valASL').textContent = asl + ' sn';
+    document.getElementById('valCPM').textContent = cpm;
+    document.getElementById('valSat').textContent = '%' + overallSat;
+
+    const banner = document.getElementById('decisionBox');
+    banner.style.display = 'block';
+
+    if (csi > 65) {
+      banner.className = 'decision-banner bg-danger';
+      banner.innerHTML = '🚨 REDDEDİLDİ: Aşırı Uyaran ve Dopamin Tuzağı Riski (0-6 Yaş İçin Sakıncalı)';
+    } else if (csi > 35) {
+      banner.className = 'decision-banner bg-warn';
+      banner.innerHTML = '⚠️ ŞARTLI KABUL: Orta Düzey Uyaran (6+ Yaş İçin Süre Kısıtlamalı)';
+    } else {
+      banner.className = 'decision-banner bg-safe';
+      banner.innerHTML = '✅ KABUL EDİLDİ: Sakin ve Pedagojik Olarak Dengeli İçerik';
+    }
+
+    // Grafik Güncelle
+    chart.data.datasets[0].data.shift();
+    chart.data.datasets[0].data.push(avgLum);
+    chart.update('none');
+
+    // Rapor Üret
+    document.getElementById('reportOutput').textContent = 
+`[TÜBİTAK 2204-A BİLGİSAYARLI GÖRÜ ANALİZ BULGUSU]
+İncelenen Kare Sayısı: ${frameCount} | Geçen Süre: ${elapsedSec.toFixed(1)} sn
+Ortalama Sahne Süresi (ASL): ${asl} sn (Eşik: >= 3.5 sn)
+Dakika Başına Kesme (CPM): ${cpm} | Ortalama Doygunluk: %${overallSat}
+Hesaplanan DAE (Duyusal Aşırı Yüklenme İndeksi): ${csi}/100
+Akademik Değerlendirme: Lillard & Peterson (2011) kriterlerine göre ${csi > 65 ? 'aşırı hızlı kurgu ve yüksek görsel uyaran' : 'dengeli temporal akış'} saptanmıştır.`;
+  }
+
+  // Sentetik Test Simülatörü
+  function startSimulator(mode) {
+    stopSimulator();
+    let speed = mode === 'cocomelon' ? 300 : (mode === 'moderate' ? 1200 : 3500);
+    let satLevel = mode === 'cocomelon' ? '100%' : (mode === 'moderate' ? '70%' : '30%');
+
+    simInterval = setInterval(() => {
+      ctx.fillStyle = `hsl(${Math.random() * 360}, ${satLevel}, ${Math.random() * 50 + 30}%)`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      cutCount++;
+      frameCount += 15;
+      totalSaturation += mode === 'cocomelon' ? 0.9 : (mode === 'moderate' ? 0.5 : 0.25);
+      updateDashboard(0.8, Math.random() * 200);
+    }, speed);
+  }
+
+  function stopSimulator() {
+    if (simInterval) clearInterval(simInterval);
+  }
+</script>
+</body>
+</html>

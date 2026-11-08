@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PedagoVision</string>
+    <string name="title_activity_main">PedagoVision</string>
+    <string name="package_name">com.tubitak.pedagovision</string>
+    <string name="custom_url_scheme">com.tubitak.pedagovision</string>
+</resources>
